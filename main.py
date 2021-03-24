@@ -1,15 +1,8 @@
-from sensemoreMqttClient import SensemoreMQTTClient, ACCELEROMETER_RANGE,SAMPLING_RATE
+from sensemoreMqttClient import SensemoreMQTTClient, ACCELEROMETER_RANGE, SAMPLING_RATE
+import json
+import os
 
-
-def measurement_done():
-    pass
-
-
-gateways = ["CA:B8:28:00:00:1B"]
-devices = ["CA:B8:31:00:00:1B"]
-# client = mqtt.Client()
-# client.on_connect = on_connect
-# client.on_message = on_message
+gateway = "CA:B8:28:00:00:1B"
 ca_cert = "certs/ca.crt"
 certfile = "certs/client.crt"
 keyfile = "certs/client.key"
@@ -17,13 +10,28 @@ host = "192.168.43.104"
 port = 8883
 
 #
+
+
 def measurement_done(measurement):
     print(measurement)
+    if not os.path.exists(measurement.id):
+        os.makedirs(measurement.id)
+    with open(measurement.id+"/accelerometer_x.csv", "w") as f:
+        f.write("\n".join([str(i) for i in measurement.accelerometer_X]))
+    with open(measurement.id+"/accelerometer_y.csv", "w") as f:
+        f.write("\n".join([str(i) for i in measurement.accelerometer_Y]))
+    with open(measurement.id+"/accelerometer_z.csv", "w") as f:
+        f.write("\n".join([str(i) for i in measurement.accelerometer_Z]))
+
+    with open(measurement.id+"/metadata.json", "w") as f:
+        f.write(json.dumps(measurement.metadata))
+
+
 def error(er):
     print(er)
 
 
-client = SensemoreMQTTClient(gateways, devices)
+client = SensemoreMQTTClient(gateway)
 
 client.on_measurement_done = measurement_done
 client.on_error = error
@@ -32,7 +40,7 @@ client.connect(host=host, port=port, ca_cert=ca_cert,
                certfile=certfile, keyfile=keyfile)
 
 
-
-client.measure(10000,ACCELEROMETER_RANGE.RANGE_2G,SAMPLING_RATE.HZ_12800,"CA:B8:31:00:00:1B")
+client.measure(10000, ACCELEROMETER_RANGE.RANGE_2G,
+               SAMPLING_RATE.HZ_12800, "CA:B8:31:00:00:1B")
 
 client.loop_forever()
