@@ -38,7 +38,7 @@ class Measurement:
         self.rangeCoefficient = self.rangeIndexToCoefficient(
             accelerometerRangeIndex)
 
-    def setMetadata(self,metadata):
+    def setMetadata(self, metadata):
         self.metadata = metadata
 
     def setTelemetries(self, telemetries):
@@ -66,9 +66,7 @@ class Measurement:
 
     def calculate_chunks(self):
         keys = self.chunks.keys()
-        print(keys)
-        keys_sorted = sorted(keys)
-        print(keys_sorted)
+        keys_sorted = sorted(keys,reverse=True)
         ordered = []
 
         for key in keys_sorted:
@@ -93,7 +91,7 @@ class SensemoreMQTTClient:
     def loop_forever(self):
         self.client.loop_forever()
 
-    def on_error(self):
+    def on_error(self, topic, msg):
         pass
 
     def connect(self, host, port, ca_cert, certfile, keyfile):
@@ -135,3 +133,5 @@ class SensemoreMQTTClient:
             doneJson = json.loads(str(msg.payload, 'utf-8'))
             measurement.setMetadata(doneJson)
             self.on_measurement_done(measurement)
+        elif (len(splitted) == 8 and splitted[0] == 'prod' and splitted[1] == 'gateway' and splitted[2] == self.gateway and splitted[3] == 'device' and splitted[5] == 'measure' and splitted[6] in self.measurements.keys() and splitted[7] == 'rejected'):
+            self.on_error(msg.topic, str(msg.payload, 'utf-8'))
