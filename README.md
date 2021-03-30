@@ -4,7 +4,7 @@ sensemore-python-mqtt-client
 Simple example project for integrating Senseways to custom MQTT broker.
 All test have done with Ubuntu 18.04 and Mosquitto as a Broker service.
 
-Details documentation can be found at [code.sensemore.io](https://code.sensemore.io/mqtt_integration)
+Details documentation can be found at [code.sensemore.io](https://code.sensemore.io/#/mqtt_integration)
 
 ## Prerequests
 
