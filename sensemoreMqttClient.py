@@ -66,7 +66,7 @@ class Measurement:
 
     def calculate_chunks(self):
         keys = self.chunks.keys()
-        keys_sorted = sorted(keys,reverse=True)
+        keys_sorted = sorted(keys, reverse=True)
         ordered = []
 
         for key in keys_sorted:
@@ -91,26 +91,43 @@ class SensemoreMQTTClient:
     def loop_forever(self):
         self.client.loop_forever()
 
-    def on_error(self, topic, msg):
-        pass
-
     def connect(self, host, port, ca_cert, certfile, keyfile):
         self.client = mqtt.Client()
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
-        self.client.tls_set(ca_certs=ca_cert, certfile=certfile,
-                            keyfile=keyfile, cert_reqs=ssl.CERT_NONE, tls_version=ssl.PROTOCOL_TLSv1_2)
+        self.client.tls_set(ca_certs=ca_cert, certfile=certfile, keyfile=keyfile,
+                            cert_reqs=ssl.CERT_NONE, tls_version=ssl.PROTOCOL_TLSv1_2)
         self.client.tls_insecure_set(True)
         self.client.connect(host, port, 60)
 
     # The callback for when the client receives a CONNACK response from the server.
+    def ota_device(self, url, device):
+        topic = "prod/gateway/{0}/device/{1}/ota".format(self.gateway, device)
+        self.client.publish(topic, url)
+
+    def on_ota_device_accepted(self, device):
+        pass
+
+    def on_ota_device_rejected(self, device, message):
+        pass
+
+    def on_ota_device_done(self, device, message):
+        pass
+
+    def on_measurement_accepted(self, measurementId, device):
+        pass
+
+    def on_measurement_rejected(self, measurementId, device, msg):
+        pass
 
     def measure(self, sampleSize, accelerometerRange, samplingRate, device):
         measurement = Measurement(sampleSize, accelerometerRange, samplingRate)
         self.measurements[measurement.id] = measurement
-        self.client.publish("prod/gateway/"+self.gateway+"/device/"+device+"/measure/" +
-                            measurement.id, "{0},{1},{2}".format(accelerometerRange, samplingRate, sampleSize))
-        pass
+        topic = "prod/gateway/{0}/device/{1}/measure/{2}".format(
+            self.gateway, device, measurement.id)
+        payload = "{0},{1},{2}".format(
+            accelerometerRange, samplingRate, sampleSize)
+        self.client.publish(topic, payload)
 
     def on_connect(self, client, userdata, flags, rc):
         print("Connected, RC:", rc)
@@ -120,18 +137,41 @@ class SensemoreMQTTClient:
     def on_message(self, client, userdata, msg):
         print(msg.topic)
         splitted = msg.topic.split('/')
-        if(len(splitted) == 4 and splitted[0] == 'prod' and splitted[1] == 'gateway' and splitted[2] == self.gateway and splitted[3] == 'scanDevice'):
+        # "prod/gateway/<gwmac>/scanDevice"
+        if(len(splitted) == 4
+           and splitted[0] == 'prod'
+           and splitted[1] == 'gateway'
+           and splitted[2] == self.gateway
+           and splitted[3] == 'scanDevice'):
             message = str(msg.payload, 'utf-8')
             self.scanReslts = json.loads(message)
             print(self.scanReslts)
-        elif (len(splitted) == 7 and splitted[0] == 'prod' and splitted[1] == 'device' and splitted[3] == 'measure' and splitted[4] in self.measurements.keys() and splitted[5] == 'chunk'):
+        # "prod/gateway/<gwmac>/device/<device-mac>/measure/<measurementId>/chunk/<chunkIndex>"
+        elif (len(splitted) == 7 
+        and splitted[0] == 'prod' and splitted[1] == 'device' and splitted[3] == 'measure' and splitted[4] in self.measurements.keys() and splitted[5] == 'chunk'):
             measurement = self.measurements[splitted[4]]
             measurement.addChunk(splitted[6], msg.payload)
+        # "prod/gateway/<gwmac>/device/<device-mac>/measure/<measurementId>/done"
         elif (len(splitted) == 8 and splitted[0] == 'prod' and splitted[1] == 'gateway' and splitted[2] == self.gateway and splitted[3] == 'device' and splitted[5] == 'measure' and splitted[6] in self.measurements.keys() and splitted[7] == 'done'):
             measurement = self.measurements[splitted[6]]
             measurement.calculate_chunks()
             doneJson = json.loads(str(msg.payload, 'utf-8'))
             measurement.setMetadata(doneJson)
             self.on_measurement_done(measurement)
+        # "prod/gateway/<gwmac>/device/<device-mac>/measure/<measurementId>/accepted"
+        elif (len(splitted) == 8 and splitted[0] == 'prod' and splitted[1] == 'gateway' and splitted[2] == self.gateway and splitted[3] == 'device' and splitted[5] == 'measure' and splitted[6] in self.measurements.keys() and splitted[7] == 'accepted'):
+            #                            measurementId,devicemac
+            self.on_measurement_accepted(splitted[6], splitted[3])
+        # "prod/gateway/<gwmac>/device/<device-mac>/measure/<measurementId>/rejected"
         elif (len(splitted) == 8 and splitted[0] == 'prod' and splitted[1] == 'gateway' and splitted[2] == self.gateway and splitted[3] == 'device' and splitted[5] == 'measure' and splitted[6] in self.measurements.keys() and splitted[7] == 'rejected'):
-            self.on_error(msg.topic, str(msg.payload, 'utf-8'))
+            self.on_measurement_rejected(
+                splitted[6], splitted[4], str(msg.payload, 'utf-8'))
+        # "prod/gateway/<gwmac>/device/<device-mac>/ota/accepted"
+        elif (len(splitted) == 7 and splitted[0] == 'prod' and splitted[1] == 'gateway' and splitted[2] == self.gateway and splitted[3] == 'device' and splitted[5] == 'ota' and splitted[6] == 'accepted'):
+            self.on_ota_device_accepted(splitted[4])
+        # "prod/gateway/<gwmac>/device/<device-mac>/ota/rejected"
+        elif (len(splitted) == 7 and splitted[0] == 'prod' and splitted[1] == 'gateway' and splitted[2] == self.gateway and splitted[3] == 'device' and splitted[5] == 'ota' and splitted[6] == 'rejected'):
+            self.on_ota_device_rejected(splitted[4], str(msg.payload, 'utf-8'))
+        # "prod/gateway/<gwmac>/device/<device-mac>/ota/done"
+        elif (len(splitted) == 7 and splitted[0] == 'prod' and splitted[1] == 'gateway' and splitted[2] == self.gateway and splitted[3] == 'device' and splitted[5] == 'ota' and splitted[6] == 'done'):
+            self.on_ota_device_done(splitted[4], str(msg.payload, 'utf-8'))
